@@ -31,3 +31,14 @@ temp/
 .cache/
 .coverage
 coverage/
+
+# Terraform (절대 커밋 금지 — state에 DB 비밀번호가 평문으로 들어감)
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan
+crash.log
+.auction-db-pass
+.dib-db-pass
