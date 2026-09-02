@@ -23,8 +23,8 @@ spec:
               app: dib-backend
       containers:
         - name: app
-          # ★★★ <ACCOUNT_ID>를 본인 12자리 계정 번호로 교체 ★★★
-          image: <ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com/dib-backend:latest
+          # ★★★ 712710405297를 본인 12자리 계정 번호로 교체 ★★★
+          image: 712710405297.dkr.ecr.ap-northeast-2.amazonaws.com/dib-backend:latest
           ports:
             - containerPort: 8080
           envFrom:
