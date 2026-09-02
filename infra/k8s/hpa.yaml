@@ -1,0 +1,22 @@
+# 다이어그램: Auto Scaling — 트래픽에 따라 Pod 증감 (노드 증설은 EKS 노드그룹 max_size가 담당)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: dib-backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: dib-backend
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 120   # 부하 빠져도 바로 줄이지 않음 (WebSocket 보호)

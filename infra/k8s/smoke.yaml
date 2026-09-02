@@ -1,0 +1,73 @@
+# ─────────────────────────────────────────────────────────────
+# 인프라 검증용 smoke 테스트 (백엔드 이미지 없이 파이프라인 검증)
+#
+# 용도: EKS 노드 → Pod 기동 → ALB 생성 → 외부 응답까지 전체 경로 확인
+# 사용: kubectl apply -f infra\k8s\smoke.yaml
+#       kubectl get ingress smoke-ingress   (ALB 주소 2~3분 대기)
+#       curl.exe http://<ALB주소>/           → "dib infra smoke ok"
+# 정리: kubectl delete -f infra\k8s\smoke.yaml (teardown.ps1도 같이 지움)
+# 주의: 백엔드 실제 배포 때는 이 파일 대신 spring.yaml을 쓴다
+# ─────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smoke
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: smoke
+  template:
+    metadata:
+      labels:
+        app: smoke
+    spec:
+      topologySpreadConstraints:          # spring.yaml과 동일한 AZ 분산 검증
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: smoke
+      containers:
+        - name: echo
+          image: hashicorp/http-echo:1.0
+          args: ["-listen=:8080", "-text=dib infra smoke ok"]
+          ports:
+            - containerPort: 8080
+          resources:
+            requests: { cpu: "50m", memory: "32Mi" }
+          readinessProbe:
+            httpGet: { path: /, port: 8080 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smoke
+spec:
+  selector:
+    app: smoke
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: smoke-ingress
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: smoke
+                port:
+                  number: 80

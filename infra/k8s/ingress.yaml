@@ -1,0 +1,24 @@
+# 이 파일을 apply 하는 순간 다이어그램의 [Application Load Balancer]가 실제로 생성된다
+# ★ 철거 시엔 반드시 이 Ingress를 먼저 삭제 (scripts/teardown.ps1이 처리)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dib-ingress
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
+    # WebSocket 필수 — 기본 60초면 경매 화면이 1분마다 끊긴다
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dib-backend
+                port:
+                  number: 80

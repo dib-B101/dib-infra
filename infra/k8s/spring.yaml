@@ -1,0 +1,56 @@
+# 다이어그램: Spring Boot Pod (Websocket Handler + Query/Command) — AZ A/C 분산
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dib-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dib-backend
+  template:
+    metadata:
+      labels:
+        app: dib-backend
+    spec:
+      terminationGracePeriodSeconds: 40
+      topologySpreadConstraints:            # Pod를 AZ A/C에 고르게
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: dib-backend
+      containers:
+        - name: app
+          # ★★★ 712710405297를 본인 12자리 계정 번호로 교체 ★★★
+          image: 712710405297.dkr.ecr.ap-northeast-2.amazonaws.com/dib-backend:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: dib-secrets
+          resources:                        # requests 없으면 HPA가 작동 안 함
+            requests: { cpu: "500m", memory: "768Mi" }
+            limits: { memory: "1280Mi" }
+          readinessProbe:
+            httpGet: { path: /actuator/health, port: 8080 }
+            initialDelaySeconds: 25
+          livenessProbe:
+            httpGet: { path: /actuator/health, port: 8080 }
+            initialDelaySeconds: 45
+          lifecycle:
+            preStop:                        # scale-in 시 WebSocket 정리 시간
+              exec:
+                command: ["sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dib-backend
+spec:
+  selector:
+    app: dib-backend
+  ports:
+    - port: 80
+      targetPort: 8080
