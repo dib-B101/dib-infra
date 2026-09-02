@@ -1,4 +1,4 @@
-# deploy.ps1 — Kafka -> Spring -> Ingress(ALB 생성) -> HPA 순서 배포
+﻿# deploy.ps1 — Kafka -> Spring -> Ingress(ALB 생성) -> HPA 순서 배포
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot\..
 

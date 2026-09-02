@@ -1,4 +1,4 @@
-# bootstrap.ps1 — 클러스터 생성(terraform apply) 후 1회 실행
+﻿# bootstrap.ps1 — 클러스터 생성(terraform apply) 후 1회 실행
 # ALB 컨트롤러 + metrics-server + 접속정보 Secret
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot\..\infra\ephemeral
@@ -20,6 +20,10 @@ helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-contro
   --set serviceAccount.create=true `
   --set serviceAccount.name=aws-load-balancer-controller `
   --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$LB_ROLE"
+
+
+# 컨트롤러 Pod가 뜰 때까지 대기 (webhook 준비 전에 Service 만들면 실패함)
+kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=180s
 
 # 2. metrics-server (HPA의 눈)
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml

@@ -1,4 +1,4 @@
-# teardown.ps1 — ★ 철거는 반드시 이 스크립트로 (Ingress 먼저, Terraform은 그다음)
+﻿# teardown.ps1 — ★ 철거는 반드시 이 스크립트로 (Ingress 먼저, Terraform은 그다음)
 # 이유: ALB는 K8s 컨트롤러가 만들어서 Terraform 장부에 없음.
 #       순서를 어기면 ALB가 VPC를 물고 있어 destroy 실패 + 잔해 과금.
 $ErrorActionPreference = "Continue"
