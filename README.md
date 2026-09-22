@@ -45,8 +45,9 @@ aws eks update-kubeconfig --name dib-eks --region ap-northeast-2
 
 ## 시작 전 교체할 값 (2곳)
 
+- 배포 당일 순서: [`docs/DEPLOY_DAY.md`](docs/DEPLOY_DAY.md) ★ 여기부터
 - `infra/persistent/main.tf`, `infra/ephemeral/main.tf` 의 state 버킷명 `dib-tfstate-b101a` — S3 버킷명은 전 세계 유일이라 겹치면 변경
-- `infra/k8s/spring.yaml` 의 `<ACCOUNT_ID>` — AWS 계정 12자리
+- `infra/k8s/*.yaml` 의 이미지 주소는 `__ECR__` 로 두고 `scripts/deploy.ps1` 이 terraform output 으로 치환한다 — 계정 번호를 손으로 고칠 필요 없음
 
 ## Git 정책
 

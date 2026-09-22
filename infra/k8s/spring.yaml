@@ -13,6 +13,9 @@ spec:
       labels:
         app: dib-backend
     spec:
+      # bootstrap.ps1 이 만드는 SA. 상품 이미지 S3 접근 권한(IRSA)이 여기 붙는다.
+      # 이게 없으면 이미지 업로드가 403 으로 떨어진다
+      serviceAccountName: dib-backend
       terminationGracePeriodSeconds: 40
       topologySpreadConstraints:            # Pod를 AZ A/C에 고르게
         - maxSkew: 1
@@ -23,8 +26,9 @@ spec:
               app: dib-backend
       containers:
         - name: app
-          # ★★★ 712710405297를 본인 12자리 계정 번호로 교체 ★★★
-          image: 712710405297.dkr.ecr.ap-northeast-2.amazonaws.com/dib-backend:latest
+          # __ECR__ 는 deploy.ps1 이 terraform output(ecr_registry)으로 치환한다.
+          # 예전엔 계정 번호가 박혀 있어서 다른 계정으로 배포하려면 이 줄을 손으로 고쳐야 했다
+          image: __ECR__/dib-backend:latest
           ports:
             - containerPort: 8080
           envFrom:
@@ -33,11 +37,11 @@ spec:
           resources:                        # requests 없으면 HPA가 작동 안 함
             requests: { cpu: "500m", memory: "768Mi" }
             limits: { memory: "1280Mi" }
-          readinessProbe:
-            httpGet: { path: /actuator/health, port: 8080 }
+          readinessProbe:                   # 의존성(DB/Redis)까지 본다 — 안 되면 트래픽만 뺀다
+            httpGet: { path: /actuator/health/readiness, port: 8080 }
             initialDelaySeconds: 25
-          livenessProbe:
-            httpGet: { path: /actuator/health, port: 8080 }
+          livenessProbe:                    # 프로세스 생존만 본다 — DB 순단으로 Pod 를 죽이지 않게
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
             initialDelaySeconds: 45
           lifecycle:
             preStop:                        # scale-in 시 WebSocket 정리 시간

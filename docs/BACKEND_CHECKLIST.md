@@ -15,10 +15,35 @@
 | `REDIS_HOST` | Redis primary 엔드포인트 | `dib-redis.xxx.cache.amazonaws.com` |
 | `KAFKA_SERVERS` | Kafka 부트스트랩 | `kafka-0.kafka:9092` |
 | `JWT_SECRET` | JWT 서명 키 | (매 배포 시 생성) |
-| `AI_SERVER_URL` | 온프렘 AI 서버 주소 | `https://...` |
-| `AI_API_KEY` | AI 서버 인증 키 | (온프렘과 합의) |
+| `PHONE_VERIFICATION_HMAC_SECRET` | **기본값 없음 — 빠지면 Pod가 안 뜬다** | (매 배포 시 생성) |
+| `DIB_SERVICE_HMAC_SECRET` | 백엔드 → AI 요청 서명 | (AI와 같은 값) |
+| `DIB_AI_HMAC_SECRET` | AI → 백엔드 콜백 서명 | (AI와 같은 값, 위와는 다름) |
+| `TOSS_SECRET_KEY` | 낙찰 자동결제(빌링) | (토스 콘솔) |
+| `DIB_S3_BUCKET` | 상품 이미지 버킷 | `dib-product-images-b101a` |
+| `AWS_REGION` | S3 리전 | `ap-northeast-2` |
+| `DIB_AI_ENABLED` | AI 연동 on/off | `deploy.ps1`이 `true`로 바꿈 |
+| `DIB_AI_MODERATION_ENABLED` | 상품 등록 시 AI 검수(GMS) 경유. `false`면 즉시 승인 | `deploy.ps1`이 `true`로 바꿈 |
+| `GEMINI_API_KEY` 등 | **AI 전용 Secret `dib-ai-secrets`** — 검수 모델(GMS) 키·주소·모델명 | `bootstrap.ps1`이 `$HOME\.dib-gms-key`에서 읽음 |
+| `DIB_AI_BASE_URL` | AI 서버 주소 (같은 클러스터) | `http://dib-ai:8000` |
+| `DIB_AI_CALLBACK_BASE_URL` | AI가 결과를 돌려보낼 주소 | `http://dib-backend` |
+| `KAKAO_CLIENT_ID` | 카카오 REST API 키. 없으면 카카오 로그인만 `KAKAO_AUTH_FAILED` | (카카오 개발자 콘솔) |
+| `KAKAO_CLIENT_SECRET` | 카카오 클라이언트 시크릿 (선택) | |
+| `KAKAO_REDIRECT_URIS` | 허용 리다이렉트 URI. **앱의 `DIB_KAKAO_REDIRECT_URI`와 글자 그대로 일치** | `dib://oauth/kakao/callback` |
+| `LIVEKIT_URL` | 라이브 송출 서버. 비면 방송 시작(토큰 발급)만 실패 | `wss://xxx.livekit.cloud` |
+| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | LiveKit 프로젝트 키 | (LiveKit 콘솔) |
+| `DIB_DATABASE_URL` | **AI 전용** — AI가 DB를 직접 읽는다 | `postgresql://auction:…@…:5432/auction` |
+| `DIB_EMBED_DATABASE_URL` | **AI 전용** — 임베딩 저장소 | 위와 동일 |
+
+**기본값이 없는 값은 기동 시점에 터진다.** `application.yaml`에 `${VAR}`를 기본값 없이 쓰면
+플레이스홀더 해석 실패로 컨텍스트가 아예 안 올라와 CrashLoopBackOff가 된다. 새로 추가할 때는
+이 표와 `scripts/bootstrap.ps1`을 **같은 커밋에서** 같이 고칠 것. 없어도 되는 값이면 `${VAR:}`로 둔다.
+
+> 예전 계약에 있던 `AI_SERVER_URL` / `AI_API_KEY` 는 **어떤 클래스에도 바인딩되지 않는 죽은 값**이었다.
+> 실제 설정은 `dib.ai.*`(`AiServerProperties`)이고 백엔드↔AI 인증은 API 키가 아니라 HMAC이다.
+> 두 값은 계약에서 제거했다.
 
 고정 계약: 컨테이너 포트 **8080**, 헬스 경로 **`/actuator/health`** (없으면 Pod가 안 뜸), DB명/계정 **auction**.
+Pod는 ServiceAccount **`dib-backend`** 로 뜬다 (상품 이미지 S3 접근 IRSA).
 
 ## 1. 무상태 (Stateless) — 최우선
 
@@ -27,6 +52,9 @@
 - 상태의 자리: 인증=JWT, 공유 상태=Redis, 영속=PostgreSQL.
 - 로컬 인메모리 캐시(Caffeine 등)는 카테고리 목록처럼 불변 데이터만.
   **현재가·입찰 상태는 절대 로컬 캐시 금지** — Redis가 유일한 진실.
+- **업로드 파일을 컨테이너 디스크에 쓰지 말 것.** 올린 Pod에만 남아서 다른 Pod로 간 조회가 404가
+  되고, Pod가 재시작하면 통째로 사라진다. 상품 이미지는 S3(`dib.storage.provider=s3`).
+  로컬 디스크 구현(`provider=local`)은 IDE·docker compose 전용이다.
 
 ## 2. 설정 외부화
 

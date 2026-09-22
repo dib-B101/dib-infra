@@ -62,17 +62,45 @@ curl.exe http://<ADDRESS>/actuator/health   # {"status":"UP"}
 ```powershell
 kubectl get pods -o wide                          # Pod 상태·배치 노드
 kubectl get hpa                                   # TARGETS 숫자면 정상, <unknown>이면 metrics-server
-kubectl logs deploy/auction-backend --tail=100    # 앱 로그
-kubectl logs deploy/auction-backend -f            # 실시간
+kubectl logs deploy/dib-backend --tail=100        # 앱 로그
+kubectl logs deploy/dib-backend -f                # 실시간
 kubectl describe pod <pod이름>                     # Pod가 안 뜰 때 (Events 섹션)
 kubectl logs -n kube-system deploy/aws-load-balancer-controller   # ALB 안 생길 때
 kubectl get events --sort-by=.lastTimestamp | Select-Object -Last 15
 ```
 
+Pod가 기동 직후 죽으면 로그 첫 줄에 `Could not resolve placeholder` 가 있는지 먼저 본다 —
+`dib-secrets` 에 값이 빠졌다는 뜻이다 (DEPLOYMENT_GUIDE 5-3).
+
+## D-1. 이벤트가 안 도착할 때 (알림·정산·이상탐지)
+
+경로는 `outbox_event` → Kafka → Consumer 세 구간이다. 구간별로 남는 흔적이 다르다.
+
+```powershell
+# 1) 발행이 막혔나 — 발행을 포기한 행. 0이 아니면 그만큼 유실이다 (5분마다 ERROR 로그도 남는다)
+kubectl logs deploy/dib-backend | Select-String "outbox 발행을 포기"
+#    DB에서 직접:
+#    SELECT event_type, attempts, last_error FROM outbox_event WHERE published_at IS NULL AND attempts >= 10;
+#    원인을 고친 뒤 UPDATE outbox_event SET attempts = 0 WHERE ... 해야 재발행된다
+
+# 2) 소비가 실패했나 — 3회 재시도 후 <토픽>.DLT 로 옮겨진다
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh `
+  --bootstrap-server localhost:9092 --topic dib.auction.closed.DLT --from-beginning --max-messages 10
+#    원본 토픽·오프셋·예외가 메시지 헤더에 들어 있다
+kubectl logs deploy/dib-backend | Select-String "DLT 로 보냄"
+
+# 3) 수치로 보기 (ADMIN 토큰 필요 — 인터넷에 열려 있으면 안 되는 값이라 막아 뒀다)
+curl.exe -H "Authorization: Bearer <ADMIN JWT>" http://$ALB/actuator/prometheus | Select-String "dib_outbox_abandoned|dib_kafka_dlt"
+```
+
+> Kafka 로그 디렉터리는 PVC(10Gi)에 있어 브로커 Pod가 재시작해도 토픽·오프셋·미소비 메시지가 남는다.
+> 단 브로커가 1대라 재시작 중에는 발행이 실패하고 `outbox_event`에 쌓였다가 재기동 후 이어서 나간다.
+
 ## E. 부하 테스트 (선택)
 
 ```powershell
-$ALB = kubectl get ingress auction-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+$ALB = kubectl get ingress dib-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 $env:BASE_URL = "http://$ALB"; $env:TOKEN = "<로그인해서 받은 JWT>"
 k6 run load-test\bid-scenario.js
 # 다른 창: kubectl get hpa -w    ← Pod 2→6 늘어나는 장면 녹화 (포트폴리오)

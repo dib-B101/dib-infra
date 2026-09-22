@@ -42,3 +42,18 @@ spec:
             - { name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP, value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT" }
             - { name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR, value: "1" }
             - { name: KAFKA_AUTO_CREATE_TOPICS_ENABLE, value: "true" }
+            # 로그 디렉터리를 아래 PVC 로 옮긴다. 컨테이너 기본 경로(/tmp/kraft-combined-logs)에 두면
+            # Pod 재시작마다 토픽·오프셋·미소비 메시지가 전부 사라진다
+            - { name: KAFKA_LOG_DIRS, value: "/var/lib/kafka/data" }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/kafka/data }
+  # 브로커가 1대라 재시작이 곧 전체 정지다. 디스크만이라도 살려 둬야 재기동 후 이어서 소비한다.
+  # ※ 이미 뜬 StatefulSet 에 나중에 추가할 수는 없다 — kubectl delete statefulset kafka 후 재적용
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

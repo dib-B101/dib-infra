@@ -38,5 +38,45 @@ resource "aws_ecr_repository" "backend" {
   force_delete = true
 }
 
-output "s3_bucket"   { value = aws_s3_bucket.product_images.bucket }
-output "ecr_backend" { value = aws_ecr_repository.backend.repository_url }
+# AI(FastAPI). torch·transformers 가 들어가 이미지가 수 GB 라 푸시가 오래 걸린다 —
+# 시연 전날 미리 밀어 두면 당일 이 단계가 사라진다
+resource "aws_ecr_repository" "ai" {
+  name         = "dib-ai"
+  force_delete = true
+}
+
+# 관리자 웹(nginx 정적). 수십 MB 라 부담 없다
+resource "aws_ecr_repository" "admin_web" {
+  name         = "dib-admin-web"
+  force_delete = true
+}
+
+# 이미지를 매번 latest 로 덮어써서 태그 없는 레이어가 쌓인다. 30일 지난 건 자동 삭제
+resource "aws_ecr_lifecycle_policy" "untagged" {
+  for_each = {
+    backend   = aws_ecr_repository.backend.name
+    ai        = aws_ecr_repository.ai.name
+    admin_web = aws_ecr_repository.admin_web.name
+  }
+  repository = each.value
+
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "태그 없는 이미지 30일 후 삭제"
+      selection = {
+        tagStatus   = "untagged"
+        countType   = "sinceImagePushed"
+        countUnit   = "days"
+        countNumber = 30
+      }
+      action = { type = "expire" }
+    }]
+  })
+}
+
+output "s3_bucket"     { value = aws_s3_bucket.product_images.bucket }
+output "ecr_backend"   { value = aws_ecr_repository.backend.repository_url }
+output "ecr_ai"        { value = aws_ecr_repository.ai.repository_url }
+output "ecr_admin_web" { value = aws_ecr_repository.admin_web.repository_url }
+output "ecr_registry"  { value = split("/", aws_ecr_repository.backend.repository_url)[0] }
