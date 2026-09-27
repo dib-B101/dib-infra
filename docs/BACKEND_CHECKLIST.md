@@ -29,6 +29,9 @@
 | `KAKAO_CLIENT_ID` | 카카오 REST API 키. 없으면 카카오 로그인만 `KAKAO_AUTH_FAILED` | (카카오 개발자 콘솔) |
 | `KAKAO_CLIENT_SECRET` | 카카오 클라이언트 시크릿 (선택) | |
 | `KAKAO_REDIRECT_URIS` | 허용 리다이렉트 URI. **앱의 `DIB_KAKAO_REDIRECT_URI`와 글자 그대로 일치**. bootstrap 이 `terraform output kakao_redirect_uri` 로 채운다 | `https://<CloudFront 도메인>/oauth/kakao/callback` |
+| `PASSWORD_RESET_PAGE_URL` | 메일의 Android HTTPS App Link. bootstrap/deploy가 CloudFront 출력으로 설정 | `https://<CloudFront 도메인>/password/reset` |
+| `SMTP_USERNAME` | Gmail SMTP 발신 주소 | Gmail 계정 주소 |
+| `SMTP_APP_PASSWORD` | Gmail 앱 비밀번호. Git에 저장하지 않는다 | 실행 환경에서 주입 |
 | `LIVEKIT_URL` | 라이브 송출 서버. 비면 방송 시작(토큰 발급)만 실패 | `wss://xxx.livekit.cloud` |
 | `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | LiveKit 프로젝트 키 | (LiveKit 콘솔) |
 | `DIB_DATABASE_URL` | **AI 전용** — AI가 DB를 직접 읽는다 | `postgresql://auction:…@…:5432/auction` |
@@ -37,6 +40,10 @@
 **기본값이 없는 값은 기동 시점에 터진다.** `application.yaml`에 `${VAR}`를 기본값 없이 쓰면
 플레이스홀더 해석 실패로 컨텍스트가 아예 안 올라와 CrashLoopBackOff가 된다. 새로 추가할 때는
 이 표와 `scripts/bootstrap.ps1`을 **같은 커밋에서** 같이 고칠 것. 없어도 되는 값이면 `${VAR:}`로 둔다.
+
+부트스트랩 전에 운영자가 `DIB_SMTP_USERNAME`과 `DIB_SMTP_APP_PASSWORD` 환경 변수를 설정한다.
+`bootstrap.ps1`은 이를 `dib-secrets`에 복사하며, `deploy.ps1`은 SMTP 항목이 없으면 배포를 중단한다.
+메일 링크 호스트는 앱을 빌드할 때 `DIB_KAKAO_REDIRECT_URI`에 사용한 CloudFront 호스트와 같아야 한다.
 
 > 예전 계약에 있던 `AI_SERVER_URL` / `AI_API_KEY` 는 **어떤 클래스에도 바인딩되지 않는 죽은 값**이었다.
 > 실제 설정은 `dib.ai.*`(`AiServerProperties`)이고 백엔드↔AI 인증은 API 키가 아니라 HMAC이다.
