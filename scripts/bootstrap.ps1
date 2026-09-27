@@ -8,6 +8,7 @@ $VPC_ID   = terraform output -raw vpc_id
 $RDS      = terraform output -raw rds_endpoint
 $REDIS    = terraform output -raw redis_endpoint
 $APP_ROLE = terraform output -raw app_role_arn     # 백엔드 Pod 의 S3 접근용 IRSA
+$KAKAO_REDIRECT_URI = terraform output -raw kakao_redirect_uri   # 스택마다 바뀌는 CloudFront 콜백 주소
 $DB_PASS  = Get-Content $HOME\.dib-db-pass
 
 # 상품 이미지 버킷은 persistent 스택 소유 (클러스터를 부숴도 이미지는 남는다)
@@ -62,7 +63,7 @@ kubectl create secret generic dib-secrets `
   --from-literal=DIB_AI_CALLBACK_BASE_URL="http://dib-backend" `
   --from-literal=KAKAO_CLIENT_ID="REPLACE-kakao-rest-api-key" `
   --from-literal=KAKAO_CLIENT_SECRET="" `
-  --from-literal=KAKAO_REDIRECT_URIS="REPLACE-app-redirect-uri" `
+  --from-literal=KAKAO_REDIRECT_URIS="$KAKAO_REDIRECT_URI" `
   --from-literal=LIVEKIT_URL="REPLACE-wss-livekit-url" `
   --from-literal=LIVEKIT_API_KEY="REPLACE-livekit-api-key" `
   --from-literal=LIVEKIT_API_SECRET="REPLACE-livekit-api-secret"
@@ -83,6 +84,21 @@ if ($GMS_KEY -like "REPLACE-*") {
     Write-Host "GMS 키 파일($HOME\.dib-gms-key)이 없어 GEMINI_API_KEY 를 비워 뒀습니다. 채운 뒤 kubectl rollout restart deployment/dib-ai" -ForegroundColor Yellow
 }
 
+# 3-2. Firebase 휴대전화 인증 — Admin SDK 서비스 계정 키(JSON) 하나를 통째로 담는 Secret.
+#      spring.yaml 이 이 Secret 을 /var/run/secrets/firebase/firebase-admin.json 으로 읽기 전용 마운트하고
+#      GOOGLE_APPLICATION_CREDENTIALS 가 그 경로를 가리킨다. 키 파일은 저장소 밖 홈 디렉터리에 둔다(절대 커밋 금지):
+#        Copy-Item <Firebase 콘솔에서 받은 서비스 계정 JSON> $HOME\.dib-firebase-admin.json
+#      파일이 없으면 Secret 을 만들지 않고 넘어가는데, 그러면 백엔드 Pod 가 ContainerCreating 에서 멈춘다
+#      (deploy.ps1 이 적용 전에 먼저 잡아 준다)
+$FIREBASE_KEY = "$HOME\.dib-firebase-admin.json"
+if (Test-Path $FIREBASE_KEY) {
+    kubectl create secret generic dib-firebase-admin --from-file=firebase-admin.json=$FIREBASE_KEY --dry-run=client -o yaml | kubectl apply -f -
+    if ($LASTEXITCODE -ne 0) { throw "dib-firebase-admin Secret 생성 실패" }
+} else {
+    Write-Host "Firebase 키 파일($FIREBASE_KEY)이 없어 dib-firebase-admin Secret 을 만들지 않았습니다. 파일을 둔 뒤 다시 실행하거나 직접 만드세요:" -ForegroundColor Yellow
+    Write-Host "  kubectl create secret generic dib-firebase-admin --from-file=firebase-admin.json=<서비스 계정 JSON 경로>"
+}
+
 # 4. 백엔드 ServiceAccount — 상품 이미지 S3 접근 권한(IRSA)
 #    spring.yaml 의 Pod 가 이 SA 로 뜬다. 키를 Secret 에 넣지 않고 역할로 받는다.
 kubectl create serviceaccount dib-backend --dry-run=client -o yaml | kubectl apply -f -
@@ -94,8 +110,9 @@ Write-Host "DIB_AI_HMAC_SECRET      = $AI_HMAC"
 Write-Host "두 값이 양쪽에서 같아야 요청/콜백 서명이 통과한다.`n" -ForegroundColor Cyan
 
 Write-Host "AI 주소는 클러스터 내부 Service 라 이미 채워져 있고, DIB_AI_ENABLED 는 deploy.ps1 이 true 로 바꾼다." -ForegroundColor Yellow
-Write-Host "문자·메일은 발송 업체가 없어 운영에서도 로그로만 남는다. 인증번호는 kubectl logs deploy/dib-backend | Select-String 'SMS 발송' 으로 본다." -ForegroundColor Yellow
-Write-Host "REPLACE- 로 남은 값(TOSS_SECRET_KEY, KAKAO_*, LIVEKIT_*, dib-ai-secrets 의 GEMINI_API_KEY)은 아래처럼 덮는다. LIVEKIT_* 이 비면 라이브 방송 시작만 실패하고 나머지는 정상." -ForegroundColor Yellow
+Write-Host "휴대전화 인증 SMS 는 Firebase Phone Auth 가 보낸다(dib-firebase-admin Secret 필요). 콘솔 테스트 번호 +82 10-9999-9999 / 111111 은 SMS 없이 통과한다. 메일은 발송 업체가 없어 로그로만 남는다." -ForegroundColor Yellow
+Write-Host "카카오 Android App Link 콜백: $KAKAO_REDIRECT_URI  (카카오 개발자 콘솔 Redirect URI 에도 등록해야 한다)" -ForegroundColor Cyan
+Write-Host "REPLACE- 로 남은 값(TOSS_SECRET_KEY, KAKAO_CLIENT_ID, LIVEKIT_*, dib-ai-secrets 의 GEMINI_API_KEY)은 아래처럼 덮는다. LIVEKIT_* 이 비면 라이브 방송 시작만 실패하고 나머지는 정상." -ForegroundColor Yellow
 Write-Host "  KAKAO_REDIRECT_URIS 는 앱 빌드의 DIB_KAKAO_REDIRECT_URI 와 글자 그대로 같아야 한다(쉼표로 여러 개). 안 맞으면 INVALID_KAKAO_REDIRECT_URI." -ForegroundColor Yellow
 Write-Host '  kubectl patch secret dib-secrets --type merge -p "{\"stringData\":{\"TOSS_SECRET_KEY\":\"<값>\"}}"'
 Write-Host '  kubectl rollout restart deployment/dib-backend'

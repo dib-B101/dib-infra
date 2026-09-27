@@ -42,3 +42,6 @@ coverage/
 crash.log
 .auction-db-pass
 .dib-db-pass
+
+# Firebase Admin SDK 서비스 계정 키 — 저장소 밖($HOME\.dib-firebase-admin.json)에만 둔다
+*firebase-admin*.json

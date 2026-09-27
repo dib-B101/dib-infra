@@ -28,7 +28,7 @@
 | `DIB_AI_CALLBACK_BASE_URL` | AI가 결과를 돌려보낼 주소 | `http://dib-backend` |
 | `KAKAO_CLIENT_ID` | 카카오 REST API 키. 없으면 카카오 로그인만 `KAKAO_AUTH_FAILED` | (카카오 개발자 콘솔) |
 | `KAKAO_CLIENT_SECRET` | 카카오 클라이언트 시크릿 (선택) | |
-| `KAKAO_REDIRECT_URIS` | 허용 리다이렉트 URI. **앱의 `DIB_KAKAO_REDIRECT_URI`와 글자 그대로 일치** | `dib://oauth/kakao/callback` |
+| `KAKAO_REDIRECT_URIS` | 허용 리다이렉트 URI. **앱의 `DIB_KAKAO_REDIRECT_URI`와 글자 그대로 일치**. bootstrap 이 `terraform output kakao_redirect_uri` 로 채운다 | `https://<CloudFront 도메인>/oauth/kakao/callback` |
 | `LIVEKIT_URL` | 라이브 송출 서버. 비면 방송 시작(토큰 발급)만 실패 | `wss://xxx.livekit.cloud` |
 | `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | LiveKit 프로젝트 키 | (LiveKit 콘솔) |
 | `DIB_DATABASE_URL` | **AI 전용** — AI가 DB를 직접 읽는다 | `postgresql://auction:…@…:5432/auction` |
