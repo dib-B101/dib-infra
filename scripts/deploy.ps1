@@ -12,6 +12,9 @@ Push-Location infra\persistent
 $ECR = terraform output -raw ecr_registry
 Pop-Location
 if (-not $ECR) { throw "ecr_registry output 이 비었습니다. infra/persistent 에서 terraform apply 를 먼저 하세요." }
+Push-Location infra\ephemeral
+$KAKAO_REDIRECT_URI = terraform output -raw kakao_redirect_uri
+Pop-Location
 Write-Host "ECR: $ECR" -ForegroundColor Cyan
 
 # 이미지가 실제로 올라가 있는지 먼저 본다. 없으면 Pod 가 ImagePullBackOff 로 죽을 때까지
@@ -96,5 +99,6 @@ Write-Host ""
 Write-Host "안드로이드 앱은 이 주소로 다시 빌드해야 합니다:" -ForegroundColor Yellow
 Write-Host "  cd components\frontend"
 Write-Host "  .\gradlew installDebug -PDIB_API_BASE_URL=http://$ALB -PDIB_WS_URL=ws://$ALB/ws"   # STOMP 엔드포인트는 /ws 하나
+Write-Host "  카카오 포함 시 위 명령에 -PDIB_KAKAO_REST_API_KEY=<REST_API_KEY> -PDIB_KAKAO_REDIRECT_URI=$KAKAO_REDIRECT_URI 추가"
 Write-Host ""
 Write-Host "아직 REPLACE 로 남은 시크릿(TOSS_SECRET_KEY 등)은 kubectl patch 로 채우세요." -ForegroundColor Yellow

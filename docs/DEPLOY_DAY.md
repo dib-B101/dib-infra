@@ -122,7 +122,9 @@ kubectl patch secret dib-secrets --type merge -p '{"stringData":{"TOSS_SECRET_KE
 kubectl rollout restart deployment/dib-backend
 ```
 
-`KAKAO_REDIRECT_URIS` 는 앱 빌드에 넣는 `DIB_KAKAO_REDIRECT_URI` 와 **글자 그대로** 같아야 한다.
+`KAKAO_REDIRECT_URIS` 는 bootstrap 이 `terraform output kakao_redirect_uri`(카카오 콜백 CloudFront)로 채운다.
+앱 빌드에 넣는 `DIB_KAKAO_REDIRECT_URI` 와 **글자 그대로** 같아야 하고, 스택을 새로 만들면 도메인이 바뀌므로
+카카오 개발자 콘솔의 Redirect URI 도 새 주소로 등록해야 한다.
 
 ## 당일 5. 안드로이드 앱 재빌드
 

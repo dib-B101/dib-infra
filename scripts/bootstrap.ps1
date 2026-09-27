@@ -8,6 +8,7 @@ $VPC_ID   = terraform output -raw vpc_id
 $RDS      = terraform output -raw rds_endpoint
 $REDIS    = terraform output -raw redis_endpoint
 $APP_ROLE = terraform output -raw app_role_arn     # 백엔드 Pod 의 S3 접근용 IRSA
+$KAKAO_REDIRECT_URI = terraform output -raw kakao_redirect_uri   # 스택마다 바뀌는 CloudFront 콜백 주소
 $DB_PASS  = Get-Content $HOME\.dib-db-pass
 
 # 상품 이미지 버킷은 persistent 스택 소유 (클러스터를 부숴도 이미지는 남는다)
@@ -62,7 +63,7 @@ kubectl create secret generic dib-secrets `
   --from-literal=DIB_AI_CALLBACK_BASE_URL="http://dib-backend" `
   --from-literal=KAKAO_CLIENT_ID="REPLACE-kakao-rest-api-key" `
   --from-literal=KAKAO_CLIENT_SECRET="" `
-  --from-literal=KAKAO_REDIRECT_URIS="REPLACE-app-redirect-uri" `
+  --from-literal=KAKAO_REDIRECT_URIS="$KAKAO_REDIRECT_URI" `
   --from-literal=LIVEKIT_URL="REPLACE-wss-livekit-url" `
   --from-literal=LIVEKIT_API_KEY="REPLACE-livekit-api-key" `
   --from-literal=LIVEKIT_API_SECRET="REPLACE-livekit-api-secret"
@@ -110,7 +111,8 @@ Write-Host "두 값이 양쪽에서 같아야 요청/콜백 서명이 통과한�
 
 Write-Host "AI 주소는 클러스터 내부 Service 라 이미 채워져 있고, DIB_AI_ENABLED 는 deploy.ps1 이 true 로 바꾼다." -ForegroundColor Yellow
 Write-Host "휴대전화 인증 SMS 는 Firebase Phone Auth 가 보낸다(dib-firebase-admin Secret 필요). 콘솔 테스트 번호 +82 10-9999-9999 / 111111 은 SMS 없이 통과한다. 메일은 발송 업체가 없어 로그로만 남는다." -ForegroundColor Yellow
-Write-Host "REPLACE- 로 남은 값(TOSS_SECRET_KEY, KAKAO_*, LIVEKIT_*, dib-ai-secrets 의 GEMINI_API_KEY)은 아래처럼 덮는다. LIVEKIT_* 이 비면 라이브 방송 시작만 실패하고 나머지는 정상." -ForegroundColor Yellow
+Write-Host "카카오 Android App Link 콜백: $KAKAO_REDIRECT_URI  (카카오 개발자 콘솔 Redirect URI 에도 등록해야 한다)" -ForegroundColor Cyan
+Write-Host "REPLACE- 로 남은 값(TOSS_SECRET_KEY, KAKAO_CLIENT_ID, LIVEKIT_*, dib-ai-secrets 의 GEMINI_API_KEY)은 아래처럼 덮는다. LIVEKIT_* 이 비면 라이브 방송 시작만 실패하고 나머지는 정상." -ForegroundColor Yellow
 Write-Host "  KAKAO_REDIRECT_URIS 는 앱 빌드의 DIB_KAKAO_REDIRECT_URI 와 글자 그대로 같아야 한다(쉼표로 여러 개). 안 맞으면 INVALID_KAKAO_REDIRECT_URI." -ForegroundColor Yellow
 Write-Host '  kubectl patch secret dib-secrets --type merge -p "{\"stringData\":{\"TOSS_SECRET_KEY\":\"<값>\"}}"'
 Write-Host '  kubectl rollout restart deployment/dib-backend'
