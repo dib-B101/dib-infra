@@ -34,6 +34,18 @@ spec:
           envFrom:
             - secretRef:
                 name: dib-secrets
+          env:
+            # Firebase 휴대전화 인증 — Admin SDK 가 서비스 계정 키(JSON)를 아래 경로에서 읽는다.
+            # 키는 bootstrap.ps1 이 $HOME\.dib-firebase-admin.json 에서 만든 Secret(dib-firebase-admin)에 있고,
+            # Git 에는 절대 올리지 않는다. Secret 이 없으면 Pod 가 ContainerCreating 에서 멈춘다(의도된 실패)
+            - name: FIREBASE_PROJECT_ID
+              value: ssafy-dib
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/run/secrets/firebase/firebase-admin.json
+          volumeMounts:
+            - name: firebase-admin
+              mountPath: /var/run/secrets/firebase
+              readOnly: true
           resources:                        # requests 없으면 HPA가 작동 안 함
             requests: { cpu: "500m", memory: "768Mi" }
             limits: { memory: "1280Mi" }
@@ -47,6 +59,14 @@ spec:
             preStop:                        # scale-in 시 WebSocket 정리 시간
               exec:
                 command: ["sh", "-c", "sleep 10"]
+      volumes:
+        - name: firebase-admin
+          secret:
+            secretName: dib-firebase-admin
+            items:
+              - key: firebase-admin.json
+                path: firebase-admin.json
+            defaultMode: 0400               # 컨테이너가 root 로 돌아 소유자 읽기만 열어 둔다
 ---
 apiVersion: v1
 kind: Service

@@ -54,6 +54,7 @@ cd components\infra
 ```powershell
 Set-Content $HOME\.dib-db-pass "<RDS 비밀번호>"      # 이미 있으면 그대로
 Set-Content $HOME\.dib-gms-key "<GMS API 키>"        # 상품 검수 2차 모델. 로컬 .env 의 GMS_API_KEY 와 같은 값
+Copy-Item <Firebase 서비스 계정 JSON> $HOME\.dib-firebase-admin.json   # 휴대전화 인증(Firebase Admin SDK). 저장소 안에 두거나 커밋 금지
 ```
 
 ---
@@ -85,6 +86,7 @@ cd ..\..
 - ALB 컨트롤러 + metrics-server 설치
 - `dib-secrets` 생성 (DB·Redis·Kafka 주소, JWT·HMAC 키 자동 생성, AI 용 `DIB_DATABASE_URL` 포함)
 - `dib-ai-secrets` 생성 (GMS 검수 모델 키·주소·모델명 — AI Pod 만 읽는다)
+- `dib-firebase-admin` 생성 (Firebase 서비스 계정 키 — 백엔드 Pod 에 `/var/run/secrets/firebase/firebase-admin.json` 으로 읽기 전용 마운트)
 - ServiceAccount `dib-backend` 에 S3 접근 IRSA 부착
 
 **출력되는 `DIB_SERVICE_HMAC_SECRET` / `DIB_AI_HMAC_SECRET` 두 값을 적어 둔다** — AI 와 백엔드가
@@ -135,8 +137,11 @@ cd ..\..\frontend
 ALB 주소를 어디에 적을 필요가 없다. **release 빌드**는 main 설정(https 전용)을 그대로 쓰기 때문에
 http ALB 에 붙일 수 없다 — 시연은 debug 빌드로 한다.
 
-문자·메일은 발송 업체가 없어 운영에서도 **로그로만** 남는다. 회원가입 인증번호는
-`kubectl logs deploy/dib-backend | Select-String "SMS 발송"` 으로 확인한다.
+회원가입 인증 SMS 는 **Firebase Phone Auth** 가 보낸다(앱이 Firebase 로 번호를 확인하고, 백엔드는
+`POST /api/v1/auth/phone-verifications/firebase` 로 받은 ID 토큰을 `dib-firebase-admin` 키로 검증한다).
+실제 번호는 Firebase 가 SMS 를 보내고, 콘솔 테스트 번호 `+82 10-9999-9999` / 코드 `111111` 은 SMS 없이 통과한다.
+실기기에서 Play Integrity 앱 확인을 통과하려면 **APK 서명 키의 SHA-1·SHA-256 이 Firebase 콘솔의 Android 앱에 등록**돼 있어야 한다
+(빌드하는 PC 의 debug 키가 바뀌면 다시 등록). 메일은 발송 업체가 없어 로그로만 남는다.
 
 ## 당일 6. 확인
 
@@ -146,6 +151,10 @@ $ALB = kubectl get ingress dib-ingress -o jsonpath='{.status.loadBalancer.ingres
 curl.exe http://$ALB/actuator/health           # {"status":"UP"}
 curl.exe http://$ALB/admin/ -I                 # 200
 kubectl logs deploy/dib-ai --tail=20           # 모델 로딩 완료 확인
+kubectl exec deploy/dib-backend -- ls -l /var/run/secrets/firebase/   # firebase-admin.json 이 보여야 한다
+# Firebase 토큰 교환 API — 가짜 토큰이면 400 INVALID_VERIFICATION(키를 읽고 검증까지 갔다는 뜻),
+# 503 FIREBASE_UNAVAILABLE 이면 Secret/환경변수 문제
+curl.exe -s -X POST http://$ALB/api/v1/auth/phone-verifications/firebase -H "Content-Type: application/json" -d '{\"idToken\":\"x\",\"phoneNumber\":\"01099999999\",\"purpose\":\"SIGN_UP\"}'
 ```
 
 ---

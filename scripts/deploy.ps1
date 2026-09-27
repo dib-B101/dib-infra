@@ -23,6 +23,13 @@ foreach ($repo in @("dib-backend", "dib-ai", "dib-admin-web")) {
     }
 }
 
+# 백엔드 Pod 는 dib-firebase-admin Secret(Firebase 서비스 계정 키)을 파일로 마운트한다(spring.yaml).
+# 없으면 Pod 가 ContainerCreating 에서 멈춰 rollout 이 5분을 기다리다 죽는다 — 여기서 먼저 잡는다
+$firebaseSecret = kubectl get secret dib-firebase-admin --ignore-not-found -o name
+if (-not $firebaseSecret) {
+    throw "dib-firebase-admin Secret 이 없습니다. `$HOME\.dib-firebase-admin.json 을 둔 뒤 .\scripts\bootstrap.ps1 을 다시 실행하세요."
+}
+
 function Apply-Manifest($path) {
     Write-Host "apply $path" -ForegroundColor DarkGray
     (Get-Content $path -Raw) -replace '__ECR__', $ECR | kubectl apply -f -
