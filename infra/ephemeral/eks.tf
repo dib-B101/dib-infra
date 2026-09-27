@@ -28,7 +28,16 @@ module "eks" {
     }
   }
 
-  cluster_addons = { coredns = {}, kube-proxy = {}, vpc-cni = {} }
+  # aws-ebs-csi-driver 가 없으면 PVC(Kafka 로그 디스크)가 영원히 Pending 이다.
+  # EKS 1.23 부터 gp2 StorageClass(kubernetes.io/aws-ebs)도 내부적으로 이 드라이버로 넘어가서 만든다
+  cluster_addons = {
+    coredns    = {}
+    kube-proxy = {}
+    vpc-cni    = {}
+    aws-ebs-csi-driver = {
+      service_account_role_arn = module.ebs_csi_role.iam_role_arn
+    }
+  }
 }
 
 # ALB 컨트롤러(Ingress→실제 ALB 생성)가 쓸 IAM Role
@@ -43,6 +52,22 @@ module "lb_controller_role" {
     main = {
       provider_arn               = module.eks.oidc_provider_arn
       namespace_service_accounts = ["kube-system:aws-load-balancer-controller"]
+    }
+  }
+}
+
+# EBS CSI 드라이버 컨트롤러가 쓸 IAM Role — 노드 역할에 EBS 권한을 붙이지 않고 IRSA 로 준다
+module "ebs_csi_role" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.0"
+
+  role_name             = "dib-ebs-csi"
+  attach_ebs_csi_policy = true
+
+  oidc_providers = {
+    main = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:ebs-csi-controller-sa"]
     }
   }
 }

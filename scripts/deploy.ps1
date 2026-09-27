@@ -30,9 +30,14 @@ if (-not $firebaseSecret) {
     throw "dib-firebase-admin Secret 이 없습니다. `$HOME\.dib-firebase-admin.json 을 둔 뒤 .\scripts\bootstrap.ps1 을 다시 실행하세요."
 }
 
+# Windows PowerShell 5.1 은 BOM 없는 UTF-8 파일을 cp949 로 읽고, 네이티브 명령으로는 ASCII 로 넘긴다.
+# 그러면 한국어 주석 끝 바이트가 줄바꿈을 삼켜 다음 줄이 주석에 붙는다 — spring.yaml 의 "- maxSkew" 가 사라져
+# topologySpreadConstraints 가 목록이 아닌 객체가 되고 BadRequest 로 적용이 실패했다. 읽기·넘기기 모두 UTF-8 로 고정한다
+$OutputEncoding = New-Object System.Text.UTF8Encoding $false
+
 function Apply-Manifest($path) {
     Write-Host "apply $path" -ForegroundColor DarkGray
-    (Get-Content $path -Raw) -replace '__ECR__', $ECR | kubectl apply -f -
+    (Get-Content $path -Raw -Encoding UTF8) -replace '__ECR__', $ECR | kubectl apply -f -
     if ($LASTEXITCODE -ne 0) { throw "$path 적용 실패" }
 }
 
@@ -69,13 +74,17 @@ if (-not $ALB) { throw "ALB 주소를 못 받았습니다. kubectl logs -n kube-
 # 6. ALB 주소가 나와야 채울 수 있는 값 — AI 가 결과를 돌려보낼 주소.
 #    AI 는 클러스터 안에 있으므로 내부 Service 주소로 충분하고 외부 노출이 필요 없다.
 #    상품 이미지도 AI 가 이 주소로 받아 간다
-# JSON 은 작은따옴표 문자열로 넘긴다. 큰따옴표 안에서 백틱으로 이스케이프하면
-# PowerShell 이 네이티브 명령에 넘길 때 따옴표가 깨지는 일이 잦다
+# JSON 은 인자가 아니라 파일(--patch-file)로 넘긴다. Windows PowerShell 5.1 은 네이티브 명령 인자 속
+# 큰따옴표를 지워서 -p '{"stringData":...}' 가 {stringData:...} 로 도착해 BadRequest 가 난다(PowerShell 7 은 괜찮다)
 # DIB_AI_MODERATION_ENABLED 까지 켜야 상품 등록이 AI 검수(GMS)를 거친다. AI_ENABLED 만 켜면 이상입찰·추천만 붙고
 # 상품은 즉시 승인된다 — 로컬 compose 와 같은 조합으로 맞춘다
 $aiPatch = '{"stringData":{"DIB_AI_CALLBACK_BASE_URL":"http://dib-backend","DIB_AI_BASE_URL":"http://dib-ai:8000","DIB_AI_ENABLED":"true","DIB_AI_MODERATION_ENABLED":"true"}}'
-kubectl patch secret dib-secrets --type merge -p $aiPatch
-if ($LASTEXITCODE -ne 0) { throw "dib-secrets 패치 실패" }
+$aiPatchFile = Join-Path $env:TEMP "dib-ai-secrets-patch.json"
+Set-Content -Path $aiPatchFile -Value $aiPatch -Encoding ASCII
+kubectl patch secret dib-secrets --type merge --patch-file $aiPatchFile
+$patchExit = $LASTEXITCODE
+Remove-Item $aiPatchFile -ErrorAction SilentlyContinue
+if ($patchExit -ne 0) { throw "dib-secrets 패치 실패" }
 kubectl rollout restart deployment/dib-backend
 kubectl rollout status deployment/dib-backend --timeout=300s
 
