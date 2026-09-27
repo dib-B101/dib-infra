@@ -1,0 +1,63 @@
+# 다이어그램: AI 서비스 (이상거래 탐지 · 상품 검수 · 추천) — FastAPI 단일 앱(serve:app)
+#
+# 백엔드와 서로 부른다.
+#   백엔드 -> AI : http://dib-ai:8000        (DIB_AI_BASE_URL)
+#   AI -> 백엔드 : http://dib-backend        (DIB_AI_CALLBACK_BASE_URL, 클러스터 내부 Service)
+# 둘 다 클러스터 안에서만 오가므로 AI 는 ALB 에 노출하지 않는다(Service 만 있고 Ingress 없음).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dib-ai
+spec:
+  replicas: 1 # 모델을 메모리에 들고 있어 여러 대는 메모리만 먹는다. 부하가 오면 그때 늘린다
+  selector:
+    matchLabels:
+      app: dib-ai
+  template:
+    metadata:
+      labels:
+        app: dib-ai
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: ai
+          image: __ECR__/dib-ai:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: dib-secrets # DIB_DATABASE_URL·HMAC 시크릿이 여기 들어 있다
+            # 상품 검수 2차 모델(GMS 게이트웨이 → Gemini) 키. 백엔드 Pod 에는 줄 이유가 없어 Secret 을 따로 뗐다.
+            # 비어 있으면 AI 는 규칙 필터만 돌고 상품이 전부 관리자 보류 큐로 간다 — 서버는 정상 기동
+            - secretRef:
+                name: dib-ai-secrets
+                optional: true
+          env:
+            # .env 파일을 이미지에 안 넣으므로 dotenv 로딩을 끈다 (compose 와 동일)
+            - { name: DIB_SKIP_DOTENV, value: "1" }
+            # 이걸 안 채우면 AI 가 202 만 주고 콜백을 안 보낸다. 백엔드 Service 이름이 들어가야 한다
+            - { name: DIB_CALLBACK_ALLOWED_HOSTS, value: "dib-backend,localhost,127.0.0.1" }
+          resources:
+            # torch·transformers 를 메모리에 올린다. t3.large(8GB) 기준으로 잡았다
+            requests: { cpu: "500m", memory: "2Gi" }
+            limits: { memory: "3Gi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30 # 모델 로딩이 길다. 넉넉히 기다린다
+          livenessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 180
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dib-ai
+spec:
+  selector:
+    app: dib-ai
+  ports:
+    - port: 8000
+      targetPort: 8000

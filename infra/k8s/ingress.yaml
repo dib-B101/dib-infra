@@ -1,5 +1,32 @@
 # 이 파일을 apply 하는 순간 다이어그램의 [Application Load Balancer]가 실제로 생성된다
 # ★ 철거 시엔 반드시 이 Ingress를 먼저 삭제 (scripts/teardown.ps1이 처리)
+#
+# group.name 으로 백엔드와 관리자 웹이 ALB 한 대를 나눠 쓴다. Ingress 마다 ALB 를 만들면
+# 과금이 두 배가 되고 앱에 넣을 주소도 둘이 된다.
+#   group.order 가 작을수록 먼저 평가된다 — /admin 을 백엔드의 / 보다 앞에 둬야 한다.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dib-admin-ingress
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/group.name: dib
+    alb.ingress.kubernetes.io/group.order: "10"
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: dib-admin-web
+                port:
+                  number: 80
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -7,6 +34,8 @@ metadata:
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/group.name: dib
+    alb.ingress.kubernetes.io/group.order: "100" # 나머지 전부 — 반드시 마지막
     alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
     # WebSocket 필수 — 기본 60초면 경매 화면이 1분마다 끊긴다
     alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600

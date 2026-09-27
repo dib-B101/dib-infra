@@ -25,6 +25,10 @@ spec:
       labels:
         app: kafka
     spec:
+      # apache/kafka 이미지는 appuser(uid 1000)로 돈다. 새 EBS 볼륨 루트는 root 소유라 그대로면
+      # "Error while writing meta.properties" 로 CrashLoopBackOff — fsGroup 으로 볼륨 그룹 쓰기 권한을 준다
+      securityContext:
+        fsGroup: 1000
       containers:
         - name: kafka
           image: apache/kafka:3.8.0
@@ -42,3 +46,22 @@ spec:
             - { name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP, value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT" }
             - { name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR, value: "1" }
             - { name: KAFKA_AUTO_CREATE_TOPICS_ENABLE, value: "true" }
+            # 로그 디렉터리를 아래 PVC 로 옮긴다. 컨테이너 기본 경로(/tmp/kraft-combined-logs)에 두면
+            # Pod 재시작마다 토픽·오프셋·미소비 메시지가 전부 사라진다.
+            # 마운트 루트가 아니라 하위 폴더를 쓴다 — 새 EBS(ext4) 루트에는 lost+found 가 있어서 Kafka 가
+            # "'lost+found' is not in the form of topic-partition" 으로 기동을 거부한다
+            - { name: KAFKA_LOG_DIRS, value: "/var/lib/kafka/data/logs" }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/kafka/data }
+  # 브로커가 1대라 재시작이 곧 전체 정지다. 디스크만이라도 살려 둬야 재기동 후 이어서 소비한다.
+  # ※ 이미 뜬 StatefulSet 에 나중에 추가할 수는 없다 — kubectl delete statefulset kafka 후 재적용
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # EKS 1.30+ 는 기본 StorageClass 가 없다(gp2 에 default 표시가 빠졌다). 이름을 안 적으면 PVC 가 Pending
+        storageClassName: gp2
+        resources:
+          requests:
+            storage: 10Gi

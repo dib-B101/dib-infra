@@ -7,6 +7,9 @@ Set-Location $PSScriptRoot\..
 # 1. K8s가 만든 AWS 리소스(ALB)부터 삭제 유발
 kubectl delete ingress --all --ignore-not-found
 kubectl delete -f infra\k8s\ --ignore-not-found
+# StatefulSet 을 지워도 PVC(Kafka 로그 디스크)는 남는다. 클러스터가 먼저 사라지면 EBS 볼륨이 고아로 남아 과금된다.
+# EBS CSI 드라이버가 살아 있을 때 PVC 를 지워야 볼륨까지 삭제된다
+kubectl delete pvc --all --ignore-not-found --wait=true
 Write-Host "ALB 삭제 대기 90초..."
 Start-Sleep -Seconds 90
 

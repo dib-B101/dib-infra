@@ -22,6 +22,18 @@ variable "db_password" {
   sensitive = true # 실행 전 PowerShell에서: $env:TF_VAR_db_password = "..."
 }
 
+variable "node_instance_type" {
+  type        = string
+  default     = "t3.large" # AI 까지 같은 클러스터에 올리므로 8GB. AI 를 빼면 t3.medium 으로 충분
+  description = "EKS 워커 노드 타입"
+}
+
+variable "product_images_bucket" {
+  type        = string
+  default     = "dib-product-images-b101a" # persistent 스택의 aws_s3_bucket.product_images 와 같은 이름
+  description = "상품 이미지 버킷. persistent 에서 이름을 바꿨으면 여기도 같이 바꾼다"
+}
+
 variable "full_ha" {
   type    = bool
   default = true # true = 다이어그램 그대로(NAT 2, RDS Multi-AZ, Redis Replica)

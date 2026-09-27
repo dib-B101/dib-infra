@@ -367,6 +367,10 @@ kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/late
 
 ### 5-3. 접속 정보 Secret (Terraform output → K8s)
 
+> `PHONE_VERIFICATION_HMAC_SECRET` 은 `application.yaml` 이 **기본값 없이** 요구한다.
+> 빠지면 플레이스홀더 해석에 실패해 컨텍스트가 아예 안 뜨고 Pod 가 CrashLoopBackOff 로 돈다.
+> 로그에는 `Could not resolve placeholder` 한 줄만 남아서 원인이 잘 안 보인다.
+
 ```bash
 cd infra/ephemeral
 kubectl create secret generic dib-secrets \
@@ -375,9 +379,37 @@ kubectl create secret generic dib-secrets \
   --from-literal=REDIS_HOST="$(terraform output -raw redis_endpoint)" \
   --from-literal=KAFKA_SERVERS="kafka-0.kafka:9092" \
   --from-literal=JWT_SECRET="$(openssl rand -base64 48)" \
-  --from-literal=AI_SERVER_URL="https://<온프렘-AI-서버-주소>" \
-  --from-literal=AI_API_KEY="<온프렘과 맞춘 키>"
+  --from-literal=PHONE_VERIFICATION_HMAC_SECRET="$(openssl rand -hex 32)" \
+  --from-literal=DIB_SERVICE_HMAC_SECRET="$(openssl rand -hex 32)" \
+  --from-literal=DIB_AI_HMAC_SECRET="$(openssl rand -hex 32)" \
+  --from-literal=TOSS_SECRET_KEY="<토스 시크릿 키>" \
+  --from-literal=DIB_S3_BUCKET="$(cd ../persistent && terraform output -raw s3_bucket)" \
+  --from-literal=AWS_REGION="ap-northeast-2" \
+  --from-literal=DIB_AI_ENABLED="false" \
+  --from-literal=DIB_AI_BASE_URL="https://<온프렘-AI-서버-주소>" \
+  --from-literal=DIB_AI_CALLBACK_BASE_URL="http://<ALB-주소>"
 ```
+
+`DIB_AI_CALLBACK_BASE_URL` 은 ALB 주소라 5-5(Ingress) 이후에야 알 수 있다. 주소가 나오면 채우고
+`DIB_AI_ENABLED=true` 로 바꾼 뒤 재시작한다. 비어 있으면 기동 로그에 경고를 남기고 AI 연동만 꺼진다
+(서버는 정상 기동). 상품 이미지도 이 주소로 AI가 가져가므로 외부에서 닿는 주소여야 한다.
+
+`DIB_SERVICE_HMAC_SECRET` / `DIB_AI_HMAC_SECRET` 은 **AI 서버와 같은 값**이어야 하고
+**서로는 달라야** 한다. 여기서 만든 값을 AI 담당에게 그대로 전달한다.
+(`scripts/bootstrap.ps1` 을 쓰면 생성·출력까지 해 준다.)
+
+### 5-3-1. 백엔드 ServiceAccount — 상품 이미지 S3 접근(IRSA)
+
+상품 이미지는 S3 에 올라간다(`dib.storage.provider=s3`, prod 프로필 기본값). 액세스 키를
+Secret 에 넣는 대신 ServiceAccount 에 IAM Role 을 붙인다. `spring.yaml` 의 Pod 가 이 SA 로 뜬다.
+
+```bash
+kubectl create serviceaccount dib-backend
+kubectl annotate serviceaccount dib-backend \
+  eks.amazonaws.com/role-arn=$(terraform output -raw app_role_arn)
+```
+
+이게 없으면 서버는 정상으로 뜨는데 **상품 등록만 500** 으로 떨어진다(S3 403).
 
 ### 5-4. Kafka StatefulSet — 그림의 [Kafka Cluster (K8s StatefulSet)]
 
@@ -432,6 +464,7 @@ spec:
   template:
     metadata: { labels: { app: dib-backend } }
     spec:
+      serviceAccountName: dib-backend       # 5-3-1에서 만든 SA — 상품 이미지 S3 접근 권한
       terminationGracePeriodSeconds: 40
       topologySpreadConstraints:            # Pod를 AZ별로 고르게 — 그림처럼 A/C 양쪽 배치
         - maxSkew: 1

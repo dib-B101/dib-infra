@@ -13,6 +13,9 @@ spec:
       labels:
         app: dib-backend
     spec:
+      # bootstrap.ps1 이 만드는 SA. 상품 이미지 S3 접근 권한(IRSA)이 여기 붙는다.
+      # 이게 없으면 이미지 업로드가 403 으로 떨어진다
+      serviceAccountName: dib-backend
       terminationGracePeriodSeconds: 40
       topologySpreadConstraints:            # Pod를 AZ A/C에 고르게
         - maxSkew: 1
@@ -23,26 +26,47 @@ spec:
               app: dib-backend
       containers:
         - name: app
-          # ★★★ 712710405297를 본인 12자리 계정 번호로 교체 ★★★
-          image: 712710405297.dkr.ecr.ap-northeast-2.amazonaws.com/dib-backend:latest
+          # __ECR__ 는 deploy.ps1 이 terraform output(ecr_registry)으로 치환한다.
+          # 예전엔 계정 번호가 박혀 있어서 다른 계정으로 배포하려면 이 줄을 손으로 고쳐야 했다
+          image: __ECR__/dib-backend:latest
           ports:
             - containerPort: 8080
           envFrom:
             - secretRef:
                 name: dib-secrets
+          env:
+            # Firebase 휴대전화 인증 — Admin SDK 가 서비스 계정 키(JSON)를 아래 경로에서 읽는다.
+            # 키는 bootstrap.ps1 이 $HOME\.dib-firebase-admin.json 에서 만든 Secret(dib-firebase-admin)에 있고,
+            # Git 에는 절대 올리지 않는다. Secret 이 없으면 Pod 가 ContainerCreating 에서 멈춘다(의도된 실패)
+            - name: FIREBASE_PROJECT_ID
+              value: ssafy-dib
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/run/secrets/firebase/firebase-admin.json
+          volumeMounts:
+            - name: firebase-admin
+              mountPath: /var/run/secrets/firebase
+              readOnly: true
           resources:                        # requests 없으면 HPA가 작동 안 함
             requests: { cpu: "500m", memory: "768Mi" }
             limits: { memory: "1280Mi" }
-          readinessProbe:
-            httpGet: { path: /actuator/health, port: 8080 }
+          readinessProbe:                   # 의존성(DB/Redis)까지 본다 — 안 되면 트래픽만 뺀다
+            httpGet: { path: /actuator/health/readiness, port: 8080 }
             initialDelaySeconds: 25
-          livenessProbe:
-            httpGet: { path: /actuator/health, port: 8080 }
+          livenessProbe:                    # 프로세스 생존만 본다 — DB 순단으로 Pod 를 죽이지 않게
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
             initialDelaySeconds: 45
           lifecycle:
             preStop:                        # scale-in 시 WebSocket 정리 시간
               exec:
                 command: ["sh", "-c", "sleep 10"]
+      volumes:
+        - name: firebase-admin
+          secret:
+            secretName: dib-firebase-admin
+            items:
+              - key: firebase-admin.json
+                path: firebase-admin.json
+            defaultMode: 0400               # 컨테이너가 root 로 돌아 소유자 읽기만 열어 둔다
 ---
 apiVersion: v1
 kind: Service
