@@ -9,6 +9,12 @@ $RDS      = terraform output -raw rds_endpoint
 $REDIS    = terraform output -raw redis_endpoint
 $APP_ROLE = terraform output -raw app_role_arn     # 백엔드 Pod 의 S3 접근용 IRSA
 $KAKAO_REDIRECT_URI = terraform output -raw kakao_redirect_uri   # 스택마다 바뀌는 CloudFront 콜백 주소
+$PASSWORD_RESET_URL = terraform output -raw password_reset_url
+$SMTP_USERNAME = $env:DIB_SMTP_USERNAME
+$SMTP_APP_PASSWORD = $env:DIB_SMTP_APP_PASSWORD
+if ([string]::IsNullOrWhiteSpace($SMTP_USERNAME) -or [string]::IsNullOrWhiteSpace($SMTP_APP_PASSWORD)) {
+  throw "DIB_SMTP_USERNAME과 DIB_SMTP_APP_PASSWORD 환경 변수를 설정해야 합니다."
+}
 $DB_PASS  = Get-Content $HOME\.dib-db-pass
 
 # 상품 이미지 버킷은 persistent 스택 소유 (클러스터를 부숴도 이미지는 남는다)
@@ -64,6 +70,9 @@ kubectl create secret generic dib-secrets `
   --from-literal=KAKAO_CLIENT_ID="REPLACE-kakao-rest-api-key" `
   --from-literal=KAKAO_CLIENT_SECRET="" `
   --from-literal=KAKAO_REDIRECT_URIS="$KAKAO_REDIRECT_URI" `
+  --from-literal=PASSWORD_RESET_PAGE_URL="$PASSWORD_RESET_URL" `
+  --from-literal=SMTP_USERNAME="$SMTP_USERNAME" `
+  --from-literal=SMTP_APP_PASSWORD="$SMTP_APP_PASSWORD" `
   --from-literal=LIVEKIT_URL="REPLACE-wss-livekit-url" `
   --from-literal=LIVEKIT_API_KEY="REPLACE-livekit-api-key" `
   --from-literal=LIVEKIT_API_SECRET="REPLACE-livekit-api-secret"

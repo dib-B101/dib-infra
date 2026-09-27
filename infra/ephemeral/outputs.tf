@@ -14,3 +14,7 @@ output "kakao_callback_domain" {
 output "kakao_redirect_uri" {
   value = "https://${aws_cloudfront_distribution.kakao_callback.domain_name}/oauth/kakao/callback"
 }
+
+output "password_reset_url" {
+  value = "https://${aws_cloudfront_distribution.kakao_callback.domain_name}/password/reset"
+}

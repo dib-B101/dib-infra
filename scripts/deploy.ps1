@@ -14,8 +14,18 @@ Pop-Location
 if (-not $ECR) { throw "ecr_registry output 이 비었습니다. infra/persistent 에서 terraform apply 를 먼저 하세요." }
 Push-Location infra\ephemeral
 $KAKAO_REDIRECT_URI = terraform output -raw kakao_redirect_uri
+$PASSWORD_RESET_URL = terraform output -raw password_reset_url
 Pop-Location
 Write-Host "ECR: $ECR" -ForegroundColor Cyan
+
+$dibSecret = kubectl get secret dib-secrets -o json | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or -not $dibSecret) { throw "dib-secrets를 읽지 못했습니다." }
+foreach ($key in @("SMTP_USERNAME", "SMTP_APP_PASSWORD")) {
+    $encodedValue = $dibSecret.data.PSObject.Properties[$key].Value
+    if (-not $encodedValue -or [string]::IsNullOrWhiteSpace([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encodedValue)))) {
+        throw "dib-secrets에 $key 값이 없습니다. bootstrap.ps1에서 SMTP 환경 변수를 설정해 다시 생성하세요."
+    }
+}
 
 # 이미지가 실제로 올라가 있는지 먼저 본다. 없으면 Pod 가 ImagePullBackOff 로 죽을 때까지
 # 3~5분을 기다리게 되는데, 여기서 잡으면 즉시 안다
@@ -81,7 +91,13 @@ if (-not $ALB) { throw "ALB 주소를 못 받았습니다. kubectl logs -n kube-
 # 큰따옴표를 지워서 -p '{"stringData":...}' 가 {stringData:...} 로 도착해 BadRequest 가 난다(PowerShell 7 은 괜찮다)
 # DIB_AI_MODERATION_ENABLED 까지 켜야 상품 등록이 AI 검수(GMS)를 거친다. AI_ENABLED 만 켜면 이상입찰·추천만 붙고
 # 상품은 즉시 승인된다 — 로컬 compose 와 같은 조합으로 맞춘다
-$aiPatch = '{"stringData":{"DIB_AI_CALLBACK_BASE_URL":"http://dib-backend","DIB_AI_BASE_URL":"http://dib-ai:8000","DIB_AI_ENABLED":"true","DIB_AI_MODERATION_ENABLED":"true"}}'
+$aiPatch = @{ stringData = @{
+    DIB_AI_CALLBACK_BASE_URL = "http://dib-backend"
+    DIB_AI_BASE_URL = "http://dib-ai:8000"
+    DIB_AI_ENABLED = "true"
+    DIB_AI_MODERATION_ENABLED = "true"
+    PASSWORD_RESET_PAGE_URL = $PASSWORD_RESET_URL
+} } | ConvertTo-Json -Compress -Depth 3
 $aiPatchFile = Join-Path $env:TEMP "dib-ai-secrets-patch.json"
 Set-Content -Path $aiPatchFile -Value $aiPatch -Encoding ASCII
 kubectl patch secret dib-secrets --type merge --patch-file $aiPatchFile

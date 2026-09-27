@@ -53,6 +53,20 @@ resource "aws_s3_object" "kakao_callback_fallback" {
   HTML
 }
 
+resource "aws_s3_object" "password_reset_fallback" {
+  bucket        = aws_s3_bucket.kakao_callback.id
+  key           = "password/reset"
+  content_type  = "text/html; charset=utf-8"
+  cache_control = "no-store"
+  content       = <<-HTML
+    <!doctype html>
+    <html lang="ko">
+      <head><meta charset="utf-8"><title>DIB 비밀번호 재설정</title></head>
+      <body><p>DIB Android 앱을 설치한 뒤 메일의 링크를 다시 열어 주세요.</p></body>
+    </html>
+  HTML
+}
+
 resource "aws_cloudfront_origin_access_control" "kakao_callback" {
   name                              = "dib-kakao-callback"
   description                       = "OAC for the private DIB Kakao callback bucket"
